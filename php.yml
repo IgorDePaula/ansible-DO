@@ -1,0 +1,52 @@
+- name: Remove default webserver
+  apt:
+    name: apache2
+    state: absent
+- name: install packages
+  apt:
+    name: "{{ packages }}"
+  vars:
+    packages:
+    - git
+    - mcrypt
+    - nginx
+    - php
+    - libmcrypt-dev
+    - php-curl
+    - php-dom
+    - php-fpm
+    - php-intl
+    - php-json
+    - php-mbstring
+    - php-sqlite3
+    - sqlite3
+- name: ensure php5-fpm cgi.fix_pathinfo=0
+  lineinfile: dest=/etc/php/7.2/fpm/php.ini regexp='^(.*)cgi.fix_pathinfo=' line=cgi.fix_pathinfo=0
+  notify:
+    - restart php-fpm
+    - restart nginx
+- name: create /var/www/ directory
+  file: dest=/var/www/ state=directory owner=www-data group=www-data mode=0700
+- name: Clone git repository
+  git: >
+     dest=/var/www/laravel
+     repo=https://github.com/laravel/laravel.git
+     update=no
+  register: cloned
+- name: install composer
+  shell: curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+  args:
+    creates: /usr/local/bin/composer
+- name: composer create-project
+  composer: command=create-project working_dir=/var/www/laravel optimize_autoloader=no
+  when: cloned is successful	
+- name: set APP_DEBUG=false
+  lineinfile: dest=/var/www/laravel/.env regexp='^APP_DEBUG=' line=APP_DEBUG=false
+- name: set APP_ENV=production
+  lineinfile: dest=/var/www/laravel/.env regexp='^APP_ENV=' line=APP_ENV=production
+- name: Configure nginx
+  template: src=nginx.conf dest=/etc/nginx/sites-available/default
+  notify:
+   - restart php-fpm
+   - restart nginx
+    
